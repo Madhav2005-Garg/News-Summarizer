@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TruthLens - News Summarizer & Bias Detector</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 25%, #16213e 50%, #0f0f23 75%, #000000 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #e0e0e0;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated background particles */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(2px 2px at 20px 30px, #00ffff, transparent),
+                radial-gradient(2px 2px at 40px 70px, #ff00ff, transparent),
+                radial-gradient(1px 1px at 90px 40px, #ffff00, transparent),
+                radial-gradient(1px 1px at 130px 80px, #00ff00, transparent),
+                radial-gradient(2px 2px at 160px 30px, #ff0080, transparent);
+            background-repeat: repeat;
+            background-size: 200px 100px;
+            animation: float 20s infinite linear;
+            opacity: 0.1;
+            z-index: -1;
+        }
+
+        @keyframes float {
+            0% { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(-200px, 0, 0); }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(15, 15, 35, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 25px;
+            box-shadow: 
+                0 25px 50px rgba(0, 0, 0, 0.5),
+                0 0 50px rgba(0, 255, 255, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            position: relative;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ffff, transparent);
+            animation: scan 3s infinite;
+        }
+
+        @keyframes scan {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(0, 255, 255, 0.1) 0%, rgba(255, 0, 255, 0.1) 100%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.7; }
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            text-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+            position: relative;
+            z-index: 1;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from { text-shadow: 0 0 20px rgba(0, 255, 255, 0.8), 0 0 30px rgba(0, 255, 255, 0.5); }
+            to { text-shadow: 0 0 30px rgba(0, 255, 255, 1), 0 0 40px rgba(0, 255, 255, 0.8); }
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Hero Section Styles */
+        .hero-section {
+            padding: 60px 50px;
+            text-align: center;
+            background: rgba(10, 10, 25, 0.8);
+        }
+
+        .hero-title {
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: #e0e0e0;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+
+        .hero-title .highlight {
+            color: #00ffff;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
+            display: block;
+            margin-top: 10px;
+        }
+
+        .hero-description {
+            font-size: 1.3rem;
+            color: #b0b0b0;
+            max-width: 800px;
+            margin: 0 auto 50px;
+            line-height: 1.6;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 1000px;
+            margin: 0 auto 60px;
+        }
+
+        .feature-box {
+            background: linear-gradient(135deg, rgba(30, 30, 60, 0.9) 0%, rgba(40, 40, 70, 0.9) 100%);
+            border-radius: 20px;
+            padding: 35px 25px;
+            text-align: center;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, currentColor, transparent);
+            opacity: 0.5;
+        }
+
+        .feature-box:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+            border-color: rgba(0, 255, 255, 0.4);
+        }
+
+        .feature-box.smart-summaries {
+            color: #00ffff;
+        }
+
+        .feature-box.bias-detection {
+            color: #feca57;
+        }
+
+        .feature-box.multi-source {
+            color: #48cae4;
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .feature-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: currentColor;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .feature-description {
+            font-size: 1rem;
+            color: #c0c0c0;
+            line-height: 1.5;
+        }
+
+        .main-content {
+            padding: 50px;
+            background: rgba(10, 10, 25, 0.8);
+        }
+
+        .input-section {
+            margin-bottom: 40px;
+        }
+
+        .input-group {
+            margin-bottom: 30px;
+            transform: translateY(0);
+            transition: transform 0.3s ease;
+        }
+
+        .input-group:hover {
+            transform: translateY(-5px);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 600;
+            color: #00ffff;
+            font-size: 1.1rem;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        input[type="url"], input[type="text"], textarea {
+            width: 100%;
+            padding: 18px;
+            border: 2px solid #333;
+            border-radius: 15px;
+            font-size: 16px;
+            background: rgba(20, 20, 40, 0.9);
+            color: #e0e0e0;
+            transition: all 0.4s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        input[type="url"]:focus, input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #00ffff;
+            box-shadow: 
+                0 0 20px rgba(0, 255, 255, 0.3),
+                inset 0 0 20px rgba(0, 255, 255, 0.1);
+            transform: scale(1.02);
+        }
+
+        input[type="url"]:hover, input[type="text"]:hover, textarea:hover {
+            border-color: #0088cc;
+            box-shadow: 0 5px 15px rgba(0, 136, 204, 0.2);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 140px;
+        }
+
+        .custom-tone-input {
+            position: relative;
+            background: linear-gradient(135deg, rgba(20, 20, 40, 0.9) 0%, rgba(30, 30, 50, 0.9) 100%);
+            border: 2px solid #444;
+        }
+
+        .tone-examples {
+            margin-top: 10px;
+            padding: 15px;
+            background: rgba(0, 255, 255, 0.05);
+            border-radius: 10px;
+            border-left: 4px solid #00ffff;
+            font-size: 0.9rem;
+            color: #aaa;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .tone-examples strong {
+            color: #00ffff;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .tone-examples ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .tone-examples li {
+            padding: 5px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .tone-examples li::before {
+            content: "▶";
+            position: absolute;
+            left: 0;
+            color: #00ffff;
+        }
+
+        .analyze-btn {
+            width: 100%;
+            padding: 12px;
+            font-size: 15px;
+            border-radius: 10px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #06b6d4 100%);
+            color: white;
+            border: none;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .analyze-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .analyze-btn:hover:not(:disabled) {
+            transform: translateY(-2px) scale(1.01);
+            box-shadow: 0 12px 35px rgba(79, 70, 229, 0.6);
+            background: linear-gradient(135deg, #3730a3 0%, #6d28d9 50%, #0891b2 100%);
+        }
+
+        .analyze-btn:hover:not(:disabled)::before {
+            left: 100%;
+        }
+
+        /* Loading Button Styles */
+        .analyze-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.9;
+            transform: none !important;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%) !important;
+            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4) !important;
+        }
+/* Multiple Bouncing Dots Animation */
+.bouncing-dots {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.bouncing-dots .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: white;
+    animation: bounce 1.4s ease-in-out infinite both;
+}
+
+.bouncing-dots .dot:nth-child(1) { animation-delay: -0.32s; }
+.bouncing-dots .dot:nth-child(2) { animation-delay: -0.16s; }
+.bouncing-dots .dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes bounce {
+    0%, 80%, 100% {
+        transform: scale(0.8) translateY(0);
+        opacity: 0.7;
+    }
+    40% {
+        transform: scale(1.2) translateY(-10px);
+        opacity: 1;
+    }
+}
+.analyze-btn.loading .bouncing-dots {
+    display: flex !important;
+}
+
+
+        .loading-text {
+            display: none;
+            color: white;
+        }
+
+        .default-text {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* When button has loading class */
+        .analyze-btn.loading .default-text {
+            display: none !important;
+        }
+
+        .analyze-btn.loading .loading-spinner {
+            display: block !important;
+        }
+
+        .analyze-btn.loading .loading-text {
+            display: block !important;
+        }
+
+        .loading-dots::after {
+            content: "";
+            animation: loadingDots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes loadingDots {
+            0% { content: ""; }
+            25% { content: "."; }
+            50% { content: ".."; }
+            75% { content: "..."; }
+            100% { content: ""; }
+        }
+
+        .divider {
+            text-align: center;
+            margin: 30px 0;
+            color: #666;
+            position: relative;
+        }
+
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffff, transparent);
+        }
+
+        .divider strong {
+            background: rgba(10, 10, 25, 0.9);
+            padding: 0 20px;
+            color: #00ffff;
+            position: relative;
+            z-index: 1;
+        }
+
+        .results-section {
+            margin-top: 50px;
+            animation: slideUp 0.6s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-card {
+            background: linear-gradient(135deg, rgba(20, 20, 40, 0.9) 0%, rgba(30, 30, 50, 0.9) 100%);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-left: 5px solid;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+
+        .result-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .result-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, currentColor, transparent);
+            opacity: 0.5;
+        }
+
+        .summary-card {
+            border-left-color: #00ffff;
+            color: #00ffff;
+        }
+
+        .bias-card {
+            border-left-color: #ff6b6b;
+            color: #ff6b6b;
+        }
+
+        .result-card h3 {
+            margin-bottom: 20px;
+            color: currentColor;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.4rem;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .result-card .content {
+            line-height: 1.8;
+            color: #e0e0e0;
+            font-size: 1.1rem;
+        }
+
+        .bias-indicator {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-right: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .bias-low {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .bias-medium {
+            background: linear-gradient(135deg, #ffc107, #fd7e14);
+            color: #333;
+            box-shadow: 0 5px 15px rgba(255, 193, 7, 0.4);
+        }
+
+        .bias-high {
+            background: linear-gradient(135deg, #dc3545, #e83e8c);
+            color: white;
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+        }
+
+        .error-message {
+            background: linear-gradient(135deg, rgba(220, 53, 69, 0.9), rgba(232, 62, 140, 0.9));
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border-left: 5px solid #ff1744;
+            box-shadow: 0 10px 30px rgba(220, 53, 69, 0.3);
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .success-message {
+            background: linear-gradient(135deg, rgba(40, 167, 69, 0.9), rgba(32, 201, 151, 0.9));
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border-left: 5px solid #28a745;
+            box-shadow: 0 10px 30px rgba(40, 167, 69, 0.3);
+        }
+
+        .analysis-metadata {
+            background: rgba(20, 20, 40, 0.6);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #b0b0b0;
+            border: 1px solid rgba(0, 255, 255, 0.1);
+        }
+
+        .analysis-metadata strong {
+            color: #00ffff;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2.2rem;
+            }
+
+            .hero-title {
+                font-size: 2.5rem;
+            }
+
+            .hero-description {
+                font-size: 1.1rem;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .main-content, .hero-section {
+                padding: 25px;
+            }
+            
+            .container {
+                border-radius: 15px;
+            }
+
+            .analyze-btn {
+                padding: 10px;
+                font-size: 13px;
+            }
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(20, 20, 40, 0.5);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #00ffff, #0088cc);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #0088cc, #00ffff);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🌐 TruthLens</h1>
+            <p>Advanced News Analysis & Bias Detection with AI</p>
+        </header>
+
+        <section class="hero-section">
+            <h2 class="hero-title">
+                Uncover the Truth Behind
+                <span class="highlight">Any News Article</span>
+            </h2>
+            <p class="hero-description">
+                Get unbiased summaries, detect potential bias, and understand news articles with our AI-powered analysis tool. 
+                Choose your preferred tone and get insights you can trust.
+            </p>
+
+            <div class="features-grid">
+                <div class="feature-box smart-summaries">
+                    <div class="feature-icon">📋</div>
+                    <h3 class="feature-title">Smart Summaries</h3>
+                    <p class="feature-description">Get concise, clear summaries in multiple tones and styles tailored to your needs</p>
+                </div>
+                
+                <div class="feature-box bias-detection">
+                    <div class="feature-icon">🔍</div>
+                    <h3 class="feature-title">Bias Detection</h3>
+                    <p class="feature-description">Identify potential bias through advanced sentiment analysis and AI evaluation</p>
+                </div>
+                
+                <div class="feature-box multi-source">
+                    <div class="feature-icon">🌐</div>
+                    <h3 class="feature-title">Multi-Source</h3>
+                    <p class="feature-description">Compare across multiple news sources for balanced perspectives and insights</p>
+                </div>
+            </div>
+        </section>
+
+        <main class="main-content">
+            
+            {% if error_message %}
+            <div class="error-message">
+                <strong>❌ Error:</strong> {{ error_message }}
+            </div>
+            {% endif %}
+
+            
+            {% if result and result.success %}
+            <div class="success-message">
+                <strong>✅ Analysis Complete!</strong> Your article has been successfully analyzed.
+            </div>
+            {% endif %}
+
+        
+            <form method="POST" action="/" id="analysisForm">
+                <div class="input-section">
+                    <div class="input-group">
+                        <label for="newsUrl">🔗 News Article URL:</label>
+                        <input type="url" id="newsUrl" name="newsUrl" placeholder="https://example.com/news-article" 
+                               value="{{ request.form.get('newsUrl', '') if request.form else '' }}">
+                    </div>
+
+                    <div class="divider">
+                        <strong>— OR —</strong>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="newsText">📝 Paste Article Text:</label>
+                        <textarea id="newsText" name="newsText" placeholder="Paste the full article text here...">{{ request.form.get('newsText', '') if request.form else '' }}</textarea>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="customTone">🎯 Custom Summary Instructions:</label>
+                        <input type="text" id="customTone" name="customTone" class="custom-tone-input" 
+                               placeholder="Enter your custom instructions for how you want the summary..."
+                               value="{{ request.form.get('customTone', '') if request.form else '' }}">
+                        <div class="tone-examples">
+                            <strong>💡 Example instructions:</strong>
+                            <ul>
+                                <li>"Summarize in neutral, objective language"</li>
+                                <li>"Give me only the key facts and numbers"</li>
+                                <li>"Explain this like I'm 10 years old"</li>
+                                <li>"Focus on the economic implications"</li>
+                                <li>"Highlight the environmental aspects"</li>
+                            </ul>
+                        </div>
+                    </div>
+
+<button type="submit" class="analyze-btn" id="analyzeBtn">
+    <div class="bouncing-dots">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+    </div>
+    <span class="default-text">🚀 Analyze Article</span>
+    <span class="loading-text">Analyzing Article...</span>
+</button>
+                </div>
+            </form>
+
+            
+            {% if result and result.success %}
+            <div class="results-section">
+                <div class="result-card summary-card">
+                    <h3>📋 Summary</h3>
+                    <div class="content">
+                        {{ result.summary }}
+                    </div>
+                </div>
+
+                <div class="result-card bias-card">
+                    <h3>🔍 Bias Analysis</h3>
+                    <div class="content">
+                        <div style="margin-bottom: 20px;">
+                            <span class="bias-indicator {{ result.bias_class }}">
+                                Bias Level: {{ result.bias_level.title() }}
+                            </span>
+                        </div>
+                        <p><strong>Bias Score:</strong> {{ "%.1f"|format(result.bias_score) }}/10</p>
+                        <p><strong>Sentiment:</strong> {{ result.sentiment.title() }}</p>
+                        <p><strong>Confidence:</strong> {{ result.confidence }}%</p>
+                        <p><strong>AI Analysis:</strong> {{ result.ai_analysis }}</p>
+                        
+                        {% if result.detailed_bias.bias_indicators %}
+                        <div style="margin-top: 15px;">
+                            <strong>Bias Indicators:</strong>
+                            <ul style="margin-left: 20px; margin-top: 10px;">
+                                {% for indicator in result.detailed_bias.bias_indicators %}
+                                <li style="margin: 5px 0;">{{ indicator }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+
+                        <div class="analysis-metadata">
+                            <strong>Analysis Details:</strong><br>
+                            <strong>Article Length:</strong> {{ result.article_length }} characters<br>
+                            <strong>API Used:</strong> {{ result.api_used }}<br>
+                            <strong>Balance Score:</strong> {{ "%.2f"|format(result.detailed_bias.balance_score) }}/1<br>
+                            <strong>Factual Score:</strong> {{ "%.2f"|format(result.detailed_bias.factual_score) }}/1<br>
+                            <strong>Analysis Time:</strong> {{ result.analysis_timestamp.split('T')[0] }} at {{ result.analysis_timestamp.split('T')[1].split('.')[0] }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </main>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const newsUrl = document.getElementById('newsUrl');
+        const newsText = document.getElementById('newsText');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const analysisForm = document.getElementById('analysisForm');
+        
+        // Clear the other input when one is filled
+        newsUrl.addEventListener('input', function() {
+            if (newsUrl.value.trim()) {
+                newsText.value = '';
+            }
+        });
+
+        newsText.addEventListener('input', function() {
+            if (newsText.value.trim()) {
+                newsUrl.value = '';
+            }
+        });
+
+        // Add hover effects
+        document.querySelectorAll('.input-group').forEach(function(group) {
+            group.addEventListener('mouseenter', function() {
+                group.style.transform = 'translateY(-5px)';
+            });
+            
+            group.addEventListener('mouseleave', function() {
+                group.style.transform = 'translateY(0)';
+            });
+        });
+
+        // Enhanced form submission with proper loading state
+        analysisForm.addEventListener('submit', function(e) {
+            console.log('Form submitted, starting loading effect...');
+            
+            // Check if either URL or text is provided
+            const hasUrl = newsUrl.value.trim();
+            const hasText = newsText.value.trim();
+            
+            if (!hasUrl && !hasText) {
+                e.preventDefault();
+                alert('Please provide either a URL or article text to analyze.');
+                return false;
+            }
+            
+            // Validate URL format if URL is provided
+            if (hasUrl) {
+                try {
+                    const url = new URL(hasUrl);
+                    if (!url.protocol.startsWith('http')) {
+                        throw new Error('Invalid protocol');
+                    }
+                } catch (error) {
+                    e.preventDefault();
+                    alert('Please enter a valid URL starting with http:// or https://');
+                    return false;
+                }
+            }
+            
+            // Start loading animation IMMEDIATELY
+            console.log('Adding loading class to button...');
+            analyzeBtn.classList.add('loading');
+            analyzeBtn.disabled = true;
+            
+            // Force DOM update
+            analyzeBtn.offsetHeight;
+            
+            // Scroll to button for better UX
+            setTimeout(function() {
+                analyzeBtn.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                });
+            }, 100);
+            
+            return true; // Let form submit normally
+        });
+
+        // Handle browser back/forward navigation
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                // Reset loading state if page loaded from cache
+                analyzeBtn.classList.remove('loading');
+                analyzeBtn.disabled = false;
+            }
+        });
+
+        // Scroll to results if they exist (for after form submission)
+        const resultsSection = document.querySelector('.results-section');
+        if (resultsSection) {
+            // Reset button state since we have results
+            analyzeBtn.classList.remove('loading');
+            analyzeBtn.disabled = false;
+            
+            // Scroll to results
+            setTimeout(function() {
+                resultsSection.scrollIntoView({ behavior: 'smooth' });
+            }, 500);
+        }
+    });
+</script>

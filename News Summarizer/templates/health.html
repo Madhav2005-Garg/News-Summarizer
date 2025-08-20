@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TruthLens - Health Check</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 25%, #16213e 50%, #0f0f23 75%, #000000 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .health-container {
+            background: rgba(15, 15, 35, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #00ffff;
+            margin-bottom: 30px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
+        }
+
+        .status {
+            font-size: 2rem;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+
+        .status.healthy {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+        }
+
+        .config-status {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(20, 20, 40, 0.8);
+            border-radius: 10px;
+            border-left: 4px solid #00ffff;
+        }
+
+        .config-item {
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status-indicator.configured {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-indicator.not-configured {
+            background: #dc3545;
+            color: white;
+        }
+
+        .timestamp {
+            margin-top: 30px;
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="health-container">
+        <h1>🏥 TruthLens Health Check</h1>
+        
+        <div class="status healthy">
+            ✅ System is Healthy
+        </div>
+
+        <div class="config-status">
+            <h3 style="color: #00ffff; margin-bottom: 15px;">API Configuration Status</h3>
+            
+            <div class="config-item">
+                <span>Gemini URL API Key:</span>
+                {% if gemini_url_configured %}
+                    <span class="status-indicator configured">✅ Configured</span>
+                {% else %}
+                    <span class="status-indicator not-configured">❌ Not Configured</span>
+                {% endif %}
+            </div>
+            
+            <div class="config-item">
+                <span>Gemini Text API Key:</span>
+                {% if gemini_text_configured %}
+                    <span class="status-indicator configured">✅ Configured</span>
+                {% else %}
+                    <span class="status-indicator not-configured">❌ Not Configured</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="timestamp">
+            Last checked: {{ timestamp }}
+        </div>
+
+        <a href="/" class="back-link">← Back to TruthLens</a>
+    </div>
+</body>
+</html>

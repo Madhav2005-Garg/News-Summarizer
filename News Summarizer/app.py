@@ -1,6 +1,5 @@
 from flask import Flask, request, render_template, flash, redirect, url_for
 from flask_cors import CORS
-import google.generativeai as genai
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -8,6 +7,7 @@ from urllib.parse import urlparse
 import os
 from datetime import datetime
 import json
+import time  # Added for sleep function
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -17,14 +17,14 @@ app = Flask(__name__)
 CORS(app)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
 
-# Global API keys
-GEMINI_URL_API_KEY = os.getenv('GEMINI_URL_API_KEY')
-GEMINI_TEXT_API_KEY = os.getenv('GEMINI_TEXT_API_KEY')
+# Global API keys - Updated for Perplexity
+PERPLEXITY_URL_API_KEY = os.getenv('PERPLEXITY_URL_API_KEY')
+PERPLEXITY_TEXT_API_KEY = os.getenv('PERPLEXITY_TEXT_API_KEY')
 
-if not GEMINI_URL_API_KEY:
-    print("Warning: GEMINI_URL_API_KEY environment variable not set")
-if not GEMINI_TEXT_API_KEY:
-    print("Warning: GEMINI_TEXT_API_KEY environment variable not set")
+if not PERPLEXITY_URL_API_KEY:
+    print("Warning: PERPLEXITY_URL_API_KEY environment variable not set")
+if not PERPLEXITY_TEXT_API_KEY:
+    print("Warning: PERPLEXITY_TEXT_API_KEY environment variable not set")
 
 def extract_text_from_url(url):
     """ROBUST URL extraction with detailed error handling and multiple strategies"""
@@ -223,35 +223,117 @@ def extract_text_from_url(url):
             raise Exception(f"Failed to extract article: {error_msg}")
 
 def generate_summary(text, tone, is_url=False):
-    """Generate summary using appropriate Gemini API based on source type"""
-    tone_prompts = {"neutral": f"Just give answers according to the tone: {tone} and the answer should be according to the Question only and the form of the answer will be properly structured and concise."}
+    """Generate summary using appropriate Perplexity API based on source type"""
+    tone_prompts = {
+        "neutral": f"Just give answers according to the tone: {tone} and the answer should be according to the Question only and the form of the answer will be properly structured and concise.Provide a neutral, factual summary of this article. The summary should be well-structured, concise, and focus on the key points without bias.",
+        "positive": f"Just give answers according to the tone: {tone} and the answer should be according to the Question only and the form of the answer will be properly structured and concise.Provide a summary with a positive tone, highlighting constructive aspects and opportunities mentioned in the article.",
+        "negative": f"Just give answers according to the tone: {tone} and the answer should be according to the Question only and the form of the answer will be properly structured and concise.Provide a critical summary, focusing on problems, concerns, and negative aspects discussed in the article.",
+        "analytical": f"Just give answers according to the tone: {tone} and the answer should be according to the Question only and the form of the answer will be properly structured and concise.Provide an analytical summary, breaking down the main arguments, evidence, and conclusions presented in the article."
+    }
     
-    prompt = f"{tone_prompts.get(tone, tone_prompts['neutral'])}\n\nArticle text:\n{text}"
+    selected_prompt = tone_prompts.get(tone, tone_prompts['neutral'])
+    prompt = f"{selected_prompt}\n\nArticle text:\n{text[:2000]}"  # Reduced text limit
     
     try:
-        if is_url:
-            # Use URL API key for URL-based content
-            if not GEMINI_URL_API_KEY:
-                raise Exception("URL API key not configured")
-            genai.configure(api_key=GEMINI_URL_API_KEY)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(prompt)
-            print("📝 Generated summary using URL API key")
-        else:
-            # Use text API key for direct text input
-            if not GEMINI_TEXT_API_KEY:
-                raise Exception("Text API key not configured")
-            genai.configure(api_key=GEMINI_TEXT_API_KEY)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(prompt)
-            print("📝 Generated summary using Text API key")
-            
-        return response.text.strip()
+        # Choose API key based on source type
+        api_key = PERPLEXITY_URL_API_KEY if is_url else PERPLEXITY_TEXT_API_KEY
+        
+        if not api_key:
+            raise Exception(f"{'URL' if is_url else 'Text'} API key not configured")
+        
+        # Use current Perplexity model names (2025)
+        payload = {
+            "model": "sonar",  # Current Perplexity model name
+            "messages": [
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
+            "max_tokens": 500,
+            "temperature": 0.1
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        print(f"📝 Generating summary using {'URL' if is_url else 'Text'} API key...")
+        
+        # Retry logic with different timeouts
+        max_retries = 3
+        timeouts = [15, 30, 45]  # Progressive timeouts
+        
+        for attempt in range(max_retries):
+            try:
+                timeout = timeouts[attempt]
+                print(f"Attempt {attempt + 1}/{max_retries} with {timeout}s timeout...")
+                
+                response = requests.post(
+                    "https://api.perplexity.ai/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout
+                )
+                
+                print(f"API Response Status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    
+                    if 'choices' not in response_data or not response_data['choices']:
+                        raise Exception("Invalid response format from Perplexity API")
+                    
+                    summary = response_data["choices"][0]["message"]["content"].strip()
+                    print(f"📝 Generated summary successfully ({len(summary)} characters)")
+                    return summary
+                    
+                elif response.status_code == 400:
+                    try:
+                        error_detail = response.json()
+                        print(f"400 Error Details: {error_detail}")
+                        raise Exception(f"Bad request to Perplexity API: {error_detail}")
+                    except:
+                        print(f"400 Error (raw): {response.text}")
+                        raise Exception(f"Bad request to Perplexity API: {response.text}")
+                elif response.status_code == 401:
+                    raise Exception("Invalid API key. Please check your Perplexity API key.")
+                elif response.status_code == 429:
+                    print("Rate limit hit, waiting 5 seconds...")
+                    time.sleep(5)
+                    continue
+                else:
+                    response.raise_for_status()
+                    
+            except requests.exceptions.Timeout:
+                print(f"⏱️ Timeout on attempt {attempt + 1}")
+                if attempt == max_retries - 1:
+                    raise Exception("Request timed out after multiple attempts. Try using shorter text or check your internet connection.")
+                print("Retrying with longer timeout...")
+                continue
+                
+            except requests.exceptions.ConnectionError:
+                print(f"🔌 Connection error on attempt {attempt + 1}")
+                if attempt == max_retries - 1:
+                    raise Exception("Connection failed after multiple attempts. Check your internet connection.")
+                print("Retrying...")
+                continue
+                
+        raise Exception("All retry attempts failed")
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Request error: {str(e)}")
+        raise Exception(f"Failed to generate summary: Network error - {str(e)}")
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {str(e)}")
+        raise Exception(f"Failed to generate summary: Invalid API response format")
     except Exception as e:
+        print(f"Summary generation error: {str(e)}")
         raise Exception(f"Failed to generate summary: {str(e)}")
 
 def analyze_bias(text, is_url=False):
-    """Analyze bias and fake news using appropriate Gemini API based on source type"""
+    """Analyze bias and fake news using appropriate Perplexity API based on source type"""
     print(f"Analyzing bias and fake news with {'URL' if is_url else 'Text'} API key...")
     
     try:
@@ -274,85 +356,135 @@ def analyze_bias(text, is_url=False):
             if re.search(pattern, text_lower, re.IGNORECASE):
                 fake_patterns_found.append(pattern)
         
-        # Enhanced prompt for Gemini API bias analysis
+        # Enhanced prompt for bias analysis
         bias_prompt = f"""You are an expert fact-checker and bias analyst. Analyze the following news article text for bias, fake news, and misinformation.
 
-Please provide a comprehensive analysis focusing on:
+Please provide a comprehensive analysis and respond ONLY in valid JSON format:
 
-1. **Bias Score (0-10)**: Rate the overall bias and misinformation level where:
-   - 0-2: Highly credible, factual, minimal bias
-   - 3-4: Some bias but generally reliable
-   - 5-6: Moderate bias, questionable claims
-   - 7-8: High bias, misleading information
-   - 9-10: Obvious fake news, misinformation, or absurd claims
-
-2. **Sentiment**: Overall emotional tone (positive, negative, neutral, neutral-positive, neutral-negative)
-
-3. **Confidence Level (0-100)**: How confident you are in your analysis
-
-4. **Source Quality (0-10)**: Estimated credibility of sources mentioned or implied
-
-5. **Specific Analysis**: Detailed explanation of your findings
-
-6. **Bias Indicators**: List specific red flags or concerning elements
-
-7. **Balance Score (0-1)**: How balanced the reporting is (1 = very balanced, 0 = extremely one-sided)
-
-8. **Factual Score (0-1)**: How factual the content appears (1 = highly factual, 0 = mostly false/misleading)
-
-IMPORTANT: Look for these red flags:
-- Absurd health claims without scientific backing
-- Fake organizations or institutions
-- Impossible scientific claims
-- Sensationalized headlines
-- Lack of credible sources
-- Emotional manipulation
-- Conspiracy theories
-- Too-good-to-be-true promises
-
-Respond ONLY in this exact JSON format:
 {{
-    "bias_score": [number 0-10],
+    "bias_score": [number 0-10, where 0=highly credible, 10=obvious fake news],
     "sentiment": "[positive/negative/neutral/neutral-positive/neutral-negative]",
     "confidence": [number 0-100],
-    "sources": [number 0-10],
-    "ai_analysis": "[brief explanation of your analysis about 4 lines not more than that]",
-    "balance_score": [number 0-1],
-    "factual_score": [number 0-1]
+    "sources": [number 0-10, estimated source quality],
+    "ai_analysis": "[brief 2-3 sentence explanation]",
+    "balance_score": [number 0-1, where 1=very balanced, 0=extremely one-sided],
+    "factual_score": [number 0-1, where 1=highly factual, 0=mostly false]
 }}
 
-Article Text to Analyze:
-{text[:3000]}"""
+Look for red flags like: absurd health claims, fake organizations, sensationalized headlines, lack of credible sources, emotional manipulation, conspiracy theories.
 
-        # Generate analysis using appropriate Gemini API key
-        if is_url:
-            if not GEMINI_URL_API_KEY:
-                raise Exception("URL API key not configured")
-            genai.configure(api_key=GEMINI_URL_API_KEY)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(bias_prompt)
-            print("🔍 Analyzed bias using URL API key")
-        else:
-            if not GEMINI_TEXT_API_KEY:
-                raise Exception("Text API key not configured")
-            genai.configure(api_key=GEMINI_TEXT_API_KEY)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(bias_prompt)
-            print("🔍 Analyzed bias using Text API key")
+Article Text (first 1500 characters):
+{text[:1500]}"""
+
+        # Choose API key based on source type
+        api_key = PERPLEXITY_URL_API_KEY if is_url else PERPLEXITY_TEXT_API_KEY
         
-        gemini_response = response.text.strip()
+        if not api_key:
+            raise Exception(f"{'URL' if is_url else 'Text'} API key not configured")
         
-        print(f"Gemini API response: {gemini_response}")
+        payload = {
+            "model": "sonar",  # Current Perplexity model name
+            "messages": [
+                {
+                    "role": "user", 
+                    "content": bias_prompt
+                }
+            ],
+            "max_tokens": 500,
+            "temperature": 0.1
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        print(f"🔍 Analyzing bias using {'URL' if is_url else 'Text'} API key...")
+        
+        # Retry logic with different timeouts
+        max_retries = 3
+        timeouts = [15, 30, 45]  # Progressive timeouts
+        
+        for attempt in range(max_retries):
+            try:
+                timeout = timeouts[attempt]
+                print(f"Bias analysis attempt {attempt + 1}/{max_retries} with {timeout}s timeout...")
+                
+                response = requests.post(
+                    "https://api.perplexity.ai/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout
+                )
+                
+                print(f"API Response Status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    perplexity_response = response.json()["choices"][0]["message"]["content"].strip()
+                    print(f"Perplexity API response received ({len(perplexity_response)} chars)")
+                    break  # Success, exit retry loop
+                    
+                elif response.status_code == 400:
+                    try:
+                        error_detail = response.json()
+                        print(f"400 Error Details: {error_detail}")
+                        raise Exception(f"Bad request to Perplexity API: {error_detail}")
+                    except:
+                        print(f"400 Error (raw): {response.text}")
+                        raise Exception(f"Bad request to Perplexity API: {response.text}")
+                elif response.status_code == 401:
+                    raise Exception("Invalid API key for bias analysis.")
+                elif response.status_code == 429:
+                    print("Rate limit hit, waiting 5 seconds...")
+                    time.sleep(5)
+                    continue
+                else:
+                    response.raise_for_status()
+                    
+            except requests.exceptions.Timeout:
+                print(f"⏱️ Bias analysis timeout on attempt {attempt + 1}")
+                if attempt == max_retries - 1:
+                    # Return fallback analysis on final timeout
+                    print("Using fallback bias analysis due to timeout")
+                    return {
+                        'bias_score': 5.0,
+                        'sentiment': 'neutral',
+                        'confidence': 40,
+                        'sources': 3,
+                        'ai_analysis': 'Bias analysis timed out. Using fallback neutral assessment.',
+                        'bias_indicators': ["API timeout occurred"],
+                        'balance_score': 0.5,
+                        'factual_score': 0.5
+                    }
+                print("Retrying bias analysis with longer timeout...")
+                continue
+                
+            except requests.exceptions.ConnectionError:
+                print(f"🔌 Bias analysis connection error on attempt {attempt + 1}")
+                if attempt == max_retries - 1:
+                    print("Using fallback bias analysis due to connection error")
+                    return {
+                        'bias_score': 5.0,
+                        'sentiment': 'neutral',
+                        'confidence': 40,
+                        'sources': 3,
+                        'ai_analysis': 'Bias analysis failed due to connection error. Using fallback neutral assessment.',
+                        'bias_indicators': ["Connection error occurred"],
+                        'balance_score': 0.5,
+                        'factual_score': 0.5
+                    }
+                print("Retrying bias analysis...")
+                continue
         
         # Try to extract JSON from the response
         try:
             # Clean the response to extract JSON
-            json_match = re.search(r'\{.*\}', gemini_response, re.DOTALL)
+            json_match = re.search(r'\{.*\}', perplexity_response, re.DOTALL)
             if json_match:
                 bias_data = json.loads(json_match.group())
             else:
                 # Try parsing the entire response as JSON
-                bias_data = json.loads(gemini_response)
+                bias_data = json.loads(perplexity_response)
             
             # Validate and clean the response
             bias_score = float(bias_data.get('bias_score', 3.0))
@@ -373,16 +505,9 @@ Article Text to Analyze:
             confidence = max(0, min(confidence, 100))
             
             sources = int(bias_data.get('sources', 3))
-            sources = max(0, min(sources, 20))
+            sources = max(0, min(sources, 10))
             
-            ai_analysis = bias_data.get('ai_analysis', 'Bias analysis completed using Gemini API.')
-            bias_indicators = bias_data.get('bias_indicators', [])
-            if not isinstance(bias_indicators, list):
-                bias_indicators = []
-            
-            # Add detected fake news patterns to bias indicators
-            if fake_patterns_found:
-                bias_indicators.extend(["Fake news patterns detected", "Absurd health claims", "Misinformation indicators"])
+            ai_analysis = bias_data.get('ai_analysis', 'Bias analysis completed.')
             
             balance_score = float(bias_data.get('balance_score', 0.5))
             balance_score = max(0, min(balance_score, 1))
@@ -390,10 +515,11 @@ Article Text to Analyze:
             factual_score = float(bias_data.get('factual_score', 0.5))
             factual_score = max(0, min(factual_score, 1))
             
-            # Adjust factual score if fake patterns found
+            # Adjust scores if fake patterns found
             if fake_patterns_found:
                 factual_score = 0.0
                 balance_score = 0.1
+                bias_score = max(bias_score, 8.5)
             
             print(f"Bias analysis complete - Score: {bias_score}, Sentiment: {sentiment}, Confidence: {confidence}%")
             
@@ -403,54 +529,49 @@ Article Text to Analyze:
                 'confidence': confidence,
                 'sources': sources,
                 'ai_analysis': ai_analysis,
-                'bias_indicators': bias_indicators,
+                'bias_indicators': ["Fake news patterns detected"] if fake_patterns_found else [],
                 'balance_score': balance_score,
                 'factual_score': factual_score
             }
             
         except (json.JSONDecodeError, KeyError, ValueError) as e:
-            print(f"Failed to parse Gemini response as JSON: {str(e)}")
-            print(f"Raw response: {gemini_response[:500]}")
+            print(f"Failed to parse Perplexity response as JSON: {str(e)}")
+            print(f"Raw response: {perplexity_response[:500]}")
             
-            # Fallback analysis based on response content
-            response_lower = gemini_response.lower()
-            
-            # Check if response indicates fake news
+            # Fallback analysis
+            response_lower = perplexity_response.lower()
             fake_indicators = ['fake', 'false', 'misinformation', 'absurd', 'ridiculous', 'unreliable', 'misleading']
             fake_count = sum(1 for indicator in fake_indicators if indicator in response_lower)
             
             if fake_count >= 2 or fake_patterns_found:
                 bias_score = 8.5
-                sentiment = 'neutral'
                 factual_score = 0.1
                 balance_score = 0.2
                 confidence = 85
             elif 'bias' in response_lower or 'political' in response_lower:
                 bias_score = 6.0
-                sentiment = 'neutral'
                 factual_score = 0.4
                 balance_score = 0.4
                 confidence = 70
             else:
                 bias_score = 4.0
-                sentiment = 'neutral'
                 factual_score = 0.6
                 balance_score = 0.6
                 confidence = 60
             
             return {
                 'bias_score': bias_score,
-                'sentiment': sentiment,
+                'sentiment': 'neutral',
                 'confidence': confidence,
-                'sources': 2,
-                'ai_analysis': gemini_response[:300] + "..." if len(gemini_response) > 300 else gemini_response,
+                'sources': 3,
+                'ai_analysis': perplexity_response[:200] + "..." if len(perplexity_response) > 200 else perplexity_response,
                 'bias_indicators': ["Response parsing failed"] + (["Obvious fake news patterns"] if fake_patterns_found else []),
                 'balance_score': balance_score,
                 'factual_score': factual_score
             }
             
     except Exception as e:
-        print(f"Gemini API error: {str(e)}")
+        print(f"Perplexity API error: {str(e)}")
         
         # Even in error, check for obvious fake news patterns
         obvious_fake = any(phrase in text.lower() for phrase in [
@@ -503,7 +624,7 @@ def analyze_article(url=None, text=None, tone='neutral'):
             'detailed_bias': bias_analysis,
             'article_length': len(article_text),
             'analysis_timestamp': datetime.now().isoformat(),
-            'api_used': 'URL API' if is_url_source else 'Text API'
+            'api_used': 'Perplexity URL API' if is_url_source else 'Perplexity Text API'
         }
         
     except Exception as e:
@@ -533,8 +654,8 @@ def index():
     
     if request.method == 'POST':
         # Check if API keys are configured
-        if not GEMINI_URL_API_KEY and not GEMINI_TEXT_API_KEY:
-            error_message = 'Gemini API keys not configured'
+        if not PERPLEXITY_URL_API_KEY and not PERPLEXITY_TEXT_API_KEY:
+            error_message = 'Perplexity API keys not configured'
         else:
             # Get form data
             url = request.form.get('newsUrl', '').strip()
@@ -544,10 +665,10 @@ def index():
             # Validation
             if not url and not text:
                 error_message = 'Either URL or text must be provided'
-            elif url and not text and not GEMINI_URL_API_KEY:
-                error_message = 'URL analysis requires GEMINI_URL_API_KEY to be configured'
-            elif text and not url and not GEMINI_TEXT_API_KEY:
-                error_message = 'Text analysis requires GEMINI_TEXT_API_KEY to be configured'
+            elif url and not text and not PERPLEXITY_URL_API_KEY:
+                error_message = 'URL analysis requires PERPLEXITY_URL_API_KEY to be configured'
+            elif text and not url and not PERPLEXITY_TEXT_API_KEY:
+                error_message = 'Text analysis requires PERPLEXITY_TEXT_API_KEY to be configured'
             else:
                 # Analyze the article
                 analysis_result = analyze_article(url=url or None, text=text or None, tone=tone)
@@ -562,16 +683,16 @@ def index():
     return render_template('index.html', 
                          result=result, 
                          error_message=error_message,
-                         gemini_url_configured=GEMINI_URL_API_KEY is not None,
-                         gemini_text_configured=GEMINI_TEXT_API_KEY is not None)
+                         perplexity_url_configured=PERPLEXITY_URL_API_KEY is not None,
+                         perplexity_text_configured=PERPLEXITY_TEXT_API_KEY is not None)
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return render_template('health.html', 
                          timestamp=datetime.now().isoformat(),
-                         gemini_url_configured=GEMINI_URL_API_KEY is not None,
-                         gemini_text_configured=GEMINI_TEXT_API_KEY is not None)
+                         perplexity_url_configured=PERPLEXITY_URL_API_KEY is not None,
+                         perplexity_text_configured=PERPLEXITY_TEXT_API_KEY is not None)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
